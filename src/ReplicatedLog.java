@@ -1,0 +1,34 @@
+public class ReplicatedLog {
+    private void startLeaderElection() {
+        replicationState.setGeneration(replicationState.getGeneration() + 1);
+        registerSelfVote();
+        requestVoteFrom(followers);
+    }
+
+    VoteResponse handleVoteRequest(VoteRequest voteRequest) {
+        // 요청에 포함된 세대가 더 높으면 요청 수신자는 팔로워가 된다.
+        // 하지만 누가 리더인지는 아직 모른다.
+        if (voteRequest.getGeneration() > replicationState.getGeneration()) {
+            becomeFollower(LEADER_NOT_KNOWN, voteRequest.getGeneration());
+        }
+
+        VoteResponse voteTracker = replicationState.getVoteTracker();
+        if (voteRequest.getGeneration() == replicationState.getGeneration() && !replicationState.hasLeader()) {
+            if (isUptoDate(voteRequest) && !voteTracker.alreadyVoted()) {
+                voteTracker.registerVote(voteRequest.getServerId());
+                return grantVote();
+            }
+            if (voteTracker.alreadyVoted()) {
+                return voteTracker.voteFor == voteRequest.getServerId() ? grantVote() : rejectVote();
+            }
+        }
+        return rejectVote();
+    }
+
+    private boolean isUptoDate(VoteRequest voteRequest) {
+        Long lastLogEntryGeneration = voteRequest.getLastLogEntryGeneration();
+        Long lastLogEntryIndex = voteRequest.getLastLogEntryIndex();
+        return lastLogEntryGeneration > wal.getLastLogEntryGeneration() ||
+                (lastLogEntryGeneration == wal.getLastLogEntryGeneration() && lastLogEntryIndex >= wal.getLastLogIndex());
+    }
+}

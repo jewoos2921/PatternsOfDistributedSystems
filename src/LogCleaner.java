@@ -56,5 +56,5 @@ class TimeBasedLogCleaner {
 
     private long timeElapsedSince(long now, long lastLogEntryTimestamp) {
         return now - lastLogEntryTimestamp;
-    }1
+    }
 }
