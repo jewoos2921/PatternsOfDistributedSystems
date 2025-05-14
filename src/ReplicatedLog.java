@@ -5,6 +5,25 @@ public class ReplicatedLog {
         requestVoteFrom(followers);
     }
 
+    private void becomeFollower(int leaderId, Long generation) {
+        replicationState.reset();
+        replcationState.setGeneration(generation);
+        replicationState.setLeaderId(leaderId);
+        transitionTo(ServerRole.FOLLOWING);
+    }
+
+    Long appendToLocalLog(byte[] data) {
+        Long generation = replicationState.getGeneration();
+        return appendToLocalLog(data, generation);
+    }
+
+    Long appendToLocalLog(byte[] data, Long generation) {
+        var logEntryId = wal.getLastLogIndex() + 1;
+        var logEntry = new WALEntry(logEntryId, data,
+                EntryType.DATA, generation);
+        return wal.writeEntry(logEntry);
+    }
+
     VoteResponse handleVoteRequest(VoteRequest voteRequest) {
         // 요청에 포함된 세대가 더 높으면 요청 수신자는 팔로워가 된다.
         // 하지만 누가 리더인지는 아직 모른다.
