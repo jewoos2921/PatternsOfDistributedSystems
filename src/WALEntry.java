@@ -3,6 +3,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class WALEntry {
@@ -29,6 +30,33 @@ class KVStore {
         this.applyLog();
     }
 
+    public void applyLog() {
+        List<WALEntry> walEntries = wal.readAll();
+        applyEntries(walEntries);
+        applyBatchLogEntries(walEntries);
+    }
+
+    private void applyBatchLogEntries(List<WALEntry> walEntries) {
+        for (WALEntry walEntry : walEntries) {
+            Command command = deserialize(walEntry);
+            if (command instanceof WriteBatchCommand) {
+                WriteBatchCommand writeBatchCommand = (WriteBatchCommand) command;
+                WriteBatch batch = writeBatchCommand.getBatch();
+                kv.putAll(batch.kv);
+            }
+        }
+    }
+
+    private void applyEntries(List<WALEntry> walEntries) {
+        for (WALEntry walEntry : walEntries) {
+            Command command = deserialize(walEntry);
+            if (command instanceof SetValueCommand) {
+                SetValueCommand setValueCommand = (SetValueCommand) command;
+                kv.put(setValueCommand.key, setValueCommand.value);
+            }
+        }
+    }
+
     public String get(String key) {
         return kv.get(key);
     }
@@ -42,6 +70,10 @@ class KVStore {
         return wal.writeEntry(new SetValueCommand(key, value).serialize());
     }
 
+    public void put(WriteBatch batch) {
+        appendLog(batch);
+        kv.putAll(batch.kv);
+    }
 }
 
 class SetValueCommand {
