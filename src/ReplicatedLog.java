@@ -1,3 +1,5 @@
+import java.util.List;
+
 public class ReplicatedLog {
     private void startLeaderElection() {
         replicationState.setGeneration(replicationState.getGeneration() + 1);
@@ -15,6 +17,32 @@ public class ReplicatedLog {
     Long appendToLocalLog(byte[] data) {
         Long generation = replicationState.getGeneration();
         return appendToLocalLog(data, generation);
+    }
+
+    private Long appendAndReplicate(byte[] data) {
+        Long lastLogEntryIndex = appendToLocalLog(data);
+        replicateOnFollowers(lastLogEntryIndex);
+        return lastLogEntryIndex;
+    }
+
+    private void replicateOnFollowers(Long entryAtIndex) {
+        for (final FollowerHandler follower : followers) {
+            replicateOn(follower, entryAtIndex); // 복제 요청을 팔로워에게 보낸다.
+        }
+    }
+
+    private ReplicationResponse appendEntries(ReplicationRequest replicationRequest) {
+        var entries = replicationRequest.getEntries();
+        entries.stream().filter(e -> !wal.exists(e))
+                .forEach(e -> wal.writeEntry(e));
+
+        return new ReplicationResponse(SUCCEEDED, serverId(),
+                replicationState.getGeneration(), wal.getLastLogIndex());
+    }
+
+    Long computeHighwaterMark(List<Long> serverLogIndexes, int noOfServers) {
+        serverLogIndexes.sort(Long::compareTo);
+        return serverLogIndexes.get(noOfServers / 2);
     }
 
     Long appendToLocalLog(byte[] data, Long generation) {
@@ -49,5 +77,24 @@ public class ReplicatedLog {
         Long lastLogEntryIndex = voteRequest.getLastLogEntryIndex();
         return lastLogEntryGeneration > wal.getLastLogEntryGeneration() ||
                 (lastLogEntryGeneration == wal.getLastLogEntryGeneration() && lastLogEntryIndex >= wal.getLastLogIndex());
+    }
+
+
+    public WALEntry readEntry(long index) {
+        if (index > replicationState.getHighWaterMark()) {
+            throw new IllegalArgumentException("Log entry not available.");
+        }
+        return wal.readAt(index);
+    }
+
+    void maybeTruncate(ReplicationRequest replicationRequest) {
+        replicationRequest.getEntries().stram()
+                .filter(this::isConflicting)
+                .forEach(this::truncate);
+    }
+
+    private boolean isConflicting(WALEntry requestEntry) {
+        return wal.getLastLogIndex() >= requestEntry.getIndex() &&
+                requestEntry.getGeneration() != wal.getGeneration(requestEntry.getEntryIndex());
     }
 }

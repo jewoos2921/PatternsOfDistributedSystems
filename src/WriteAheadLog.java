@@ -1,3 +1,4 @@
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,5 +64,18 @@ class WALSegment {
         }
 
         return -1L;
+    }
+
+    public synchronized void truncate(Long logIndex) throws IOException {
+        var filePosition = entryOffsets.get(logIndex);
+        if (filePosition == null) {
+            throw new IllegalArgumentException("No file position available for logIndex=" + logIndex);
+        }
+        fileChannel.truncate(filePosition);
+        truncateIndex(logIndex);
+    }
+
+    private void truncateIndex(Long logIndex) {
+        entryOffsets.entrySet().removeIf(entry -> entry.getKey() >= logIndex);
     }
 }
