@@ -74,6 +74,11 @@ class KVStore {
         appendLog(batch);
         kv.putAll(batch.kv);
     }
+
+    public SnapShot takeSnapShot() {
+        Long snapShotTakenAtLogIndex = wal.getLastLogIndex();
+        return new SnapShot(serializeState(kv), snapShotTakenAtLogIndex);
+    }
 }
 
 class SetValueCommand {

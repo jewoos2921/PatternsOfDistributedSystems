@@ -2,6 +2,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class WriteAheadLog {
+    public WriteAheadLog() {
+        this.logCleaner = new LogCleaner(config);
+        this.logCleaner.startup();
+    }
+
     public Long writeEntry(WALEntry entry) {
         maybeRoll();
         return openSegment.writeEntry(entry);
