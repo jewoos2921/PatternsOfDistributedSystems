@@ -97,4 +97,50 @@ public class ReplicatedLog {
         return wal.getLastLogIndex() >= requestEntry.getIndex() &&
                 requestEntry.getGeneration() != wal.getGeneration(requestEntry.getEntryIndex());
     }
+
+    private void truncate(WALEntry entry) {
+        wal.truncate(entry.getEntryIndex());
+    }
+
+    private void updateMatchingLogIndex(int serverId, long replicatedIndex) {
+        FollowerHandler follower = getFollowerHandler(serverId);
+        follower.updateLastReplicatedIndex(replicatedIndex);
+    }
+
+    private boolean isPreviousEntryGenerationMismatched(ReplicationRequest request) {
+        return generationAt(request.getPrevLogIndex())
+                != request.getPrevLogGeneration();
+    }
+
+    private Long generationAt(long prevLogIndex) {
+        WALEntry walEntry = wal.readAt(prevLogIndex);
+        return walEntry.getGeneration();
+    }
+
+    private void applyLogEntries(Long previousCommitIndex,
+                                 Long commitIndex) {
+        for (long index = previousCommitIndex + 1; index <= commitIndex; index++) {
+            WALEntry walEntry = wal.readAt(index);
+            logger.info("Applying entry at" + index + " on server " + serverId());
+            var response = stateMachine.applyEntry(walEntry);
+            completeActiveProposal(index, response);
+        }
+    }
+
+    private void updateHeightWaterMark(ReplicationRequest request) {
+        if (request.getHighWaterMark() > replicationState.getHighWaterMark()) {
+            var previousHighWaterMark = replicationState.getHighWaterMark();
+            replicationState.setHighWaterMark(request.getHighWaterMark());
+            applyLogEntries(previousHighWaterMark, replicationState.getHighWaterMark());
+        }
+    }
+
+}
+
+class FollowerHandler {
+    private long matchIndex;
+
+    public void updateLastReplicatedIndex(long lastReplicatedLogIndex) {
+        this.matchIndex = lastReplicatedLogIndex;
+    }
 }
